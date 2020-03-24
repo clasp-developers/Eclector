@@ -320,7 +320,7 @@
   (declare (ignore char))
   (unless (null parameter)
     (numeric-parameter-ignored stream 'sharpsign-single-quote parameter))
-  (let ((name (with-forbidden-quasiquotation ('sharpsign-single-quote :keep t)
+  (let ((name (with-forbidden-quasiquotation ('sharpsign-single-quote :keep :keep)
                 (read stream t nil t))))
     (if *read-suppress*
         nil
