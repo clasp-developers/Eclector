@@ -93,9 +93,11 @@
     (when (and package-markers-end
                (> length 1)
                (= package-markers-end (1- length)))
-      (%reader-error input-stream
-                     'symbol-name-must-not-end-with-package-marker
-                     :token token))
+      (%recoverable-reader-error
+       input-stream 'symbol-name-must-not-end-with-package-marker
+       :token token :report 'treat-as-escaped)
+      (setf position-package-marker-1 nil
+            position-package-marker-2 nil))
     (flet ((interpret (package symbol count)
              (interpret-symbol client input-stream package symbol count)))
       (cond ((null position-package-marker-1)
@@ -164,17 +166,23 @@
     ((#\d #\D) 'double-float)
     ((#\l #\L) 'long-float)))
 
-(declaim (ftype (function (&key (:base (integer 2 36))) function)
+(declaim (ftype (function ((integer 2 36)) function)
                 make-integer-accumulator))
-(defun make-integer-accumulator (&key (base 10.))
+(defun make-integer-accumulator (base)
   (let ((value 0))
-    (lambda (&optional char)
-      (if char
-          (let ((digit (digit-char-p char base)))
-            (when digit
-              (setf value (+ (* value base) digit))
-              t))
-          value))))
+    (lambda (&optional char invalidatep)
+      (cond ((null char)
+             value)
+            ((null value)
+             nil)
+            (t
+             (let ((digit (digit-char-p char base)))
+               (cond ((not (null digit))
+                      (setf value (+ (* value base) digit)))
+                     (invalidatep
+                      (setf value nil))
+                     (t
+                      nil))))))))
 
 (defmethod interpret-token (client input-stream token escape-ranges)
   (convert-according-to-readtable-case token escape-ranges)
@@ -182,13 +190,13 @@
          (remaining-escape-ranges escape-ranges)
          (escape-range (first remaining-escape-ranges))
          (sign 1)
-         (decimal-mantissa (make-integer-accumulator))
-         (numerator (make-integer-accumulator :base *read-base*))
-         (denominator (make-integer-accumulator :base *read-base*))
-         (fraction-numerator (make-integer-accumulator))
+         (decimal-mantissa (make-integer-accumulator 10))
+         (numerator (make-integer-accumulator *read-base*))
+         (denominator (make-integer-accumulator *read-base*))
+         (fraction-numerator (make-integer-accumulator 10))
          (fraction-denominator 1)
          (exponent-sign 1)
-         (exponent (make-integer-accumulator))
+         (exponent (make-integer-accumulator 10))
          (exponent-marker nil)
          (position-package-marker-1 nil)
          (position-package-marker-2 nil)
@@ -239,8 +247,12 @@
                           ((and ,char-var
                                 (not ,escapep-var)
                                 (char-invalid-p ,char-var))
-                           (%reader-error input-stream 'invalid-constituent-character
-                                          :token (string ,char-var)))
+                           (%recoverable-reader-error
+                            input-stream 'invalid-constituent-character
+                            :token (string ,char-var)
+                            :report 'replace-invalid-character)
+                           (setf (aref token index) #\_)
+                           (go symbol))
                           (,escapep-var (go symbol))
                           ,@(when colon-go-symbol
                               `(((eql ,char-var #\:)
@@ -259,7 +271,7 @@
               (setf sign -1)
               (go sign))
              ((funcall decimal-mantissa char)
-              (funcall numerator char)
+              (funcall numerator char t)
               (go decimal-integer))
              ((funcall numerator char)
               (go integer))
@@ -269,7 +281,7 @@
            ;; If a sign is all we have, it is a symbol.
            (next-cond (char t)
              ((funcall decimal-mantissa char)
-              (funcall numerator char)
+              (funcall numerator char t)
               (go decimal-integer))
              ((funcall numerator char)
               (go integer))
@@ -314,11 +326,13 @@
            (next-cond (char)
              ((not char)
               (return-from interpret-token
-                (* sign (funcall numerator))))
+                (alexandria:if-let ((value (funcall numerator)))
+                  (* sign value)
+                  (symbol))))
              ((eql char #\.)
               (go decimal-integer-final))
              ((funcall decimal-mantissa char)
-              (funcall numerator char)
+              (funcall numerator char t)
               (go decimal-integer))
              ((funcall numerator char)
               (go integer))
@@ -357,7 +371,15 @@
            (next-cond (char)
              ((not char)
               (return-from interpret-token
-                (* sign (/ (funcall numerator) (funcall denominator)))))
+                (alexandria:if-let ((numerator (funcall numerator)))
+                  (let ((denominator (funcall denominator)))
+                    (when (zerop denominator)
+                      (%recoverable-reader-error
+                       input-stream 'zero-denominator
+                       :report 'replace-invalid-digit)
+                      (setf denominator 1))
+                    (* sign (/ numerator denominator)))
+                  (symbol))))
              ((funcall denominator char)
               (go ratio)))
          float-no-exponent
@@ -411,17 +433,18 @@
                      (setf position-package-marker-1 index))
                     ((null position-package-marker-2)
                      (cond ((/= position-package-marker-1 (1- index))
-                            (%reader-error
+                            (%recoverable-reader-error
                              input-stream 'two-package-markers-must-be-adjacent
-                             :token token))
+                             :token token :report 'treat-as-escaped))
                            ((= position-package-marker-1 0)
                             (%recoverable-reader-error
                              input-stream 'two-package-markers-must-not-be-first
-                             :token token :report 'treat-as-keyword)
+                             :token token :report 'treat-as-escaped)
                             (setf position-package-marker-2 index))
                            (t
                             (setf position-package-marker-2 index))))
                     (t
-                     (%reader-error input-stream 'symbol-can-have-at-most-two-package-markers
-                                    :token token)))
+                     (%recoverable-reader-error
+                      input-stream 'symbol-can-have-at-most-two-package-markers
+                      :token token :report 'treat-as-escaped)))
               (go symbol))))))))

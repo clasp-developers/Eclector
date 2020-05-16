@@ -29,8 +29,8 @@
         `((,(format nil "~C" #\Backspace)   t   nil nil eclector.reader:invalid-constituent-character)
           (,(format nil "~C" #\Rubout)      t   nil nil eclector.reader:invalid-constituent-character)
           ("a"                              t   nil nil |A|)
-          ("\\"                             t   nil nil eclector.reader:end-of-file)
-          ("\\"                             nil nil nil eclector.reader:end-of-file)
+          ("\\"                             t   nil nil eclector.reader:unterminated-single-escape-in-symbol)
+          ("\\"                             nil nil nil eclector.reader:unterminated-single-escape-in-symbol)
           ("\\a"                            t   nil nil |a|)
           (,(format nil "\\~C" #\Backspace) t   nil nil ,(intern (format nil "~C" #\Backspace)))
 
@@ -38,16 +38,16 @@
           (,(format nil "a~C" #\Rubout)     t   nil nil eclector.reader:invalid-constituent-character)
           ("aa"                             t   nil nil |AA|)
           ("a#"                             t   nil nil |A#|)
-          ("a\\"                            t   nil nil eclector.reader:end-of-file)
-          ("a\\"                            nil nil nil eclector.reader:end-of-file)
+          ("a\\"                            t   nil nil eclector.reader:unterminated-single-escape-in-symbol)
+          ("a\\"                            nil nil nil eclector.reader:unterminated-single-escape-in-symbol)
           ("a\\a"                           t   nil nil |Aa|)
           ("a|a|"                           t   nil nil |Aa|)
           ("a,"                             t   nil nil |A|  1)
           ("a "                             t   nil nil |A|)
           ("a "                             t   nil t   |A|  1)
 
-          ("|"                              t   nil nil eclector.reader:end-of-file)
-          ("|"                              nil nil nil eclector.reader:end-of-file)
+          ("|"                              t   nil nil eclector.reader:unterminated-multiple-escape-in-symbol)
+          ("|"                              nil nil nil eclector.reader:unterminated-multiple-escape-in-symbol)
           ("||"                             t   nil nil ||)
           ("||a"                            t   nil nil |A|)
           ("|a|"                            t   nil nil |a|)
@@ -55,10 +55,10 @@
           ("|,|"                            t   nil nil |,|)
           ("| |"                            t   nil nil | |)
           (,(format nil "|~C|" #\Backspace) t   nil nil ,(intern (format nil "~C" #\Backspace)))
-          ("|\\"                            t   nil nil eclector.reader:end-of-file)
-          ("|\\"                            nil nil nil eclector.reader:end-of-file)
-          ("|\\|"                           t   nil nil eclector.reader:end-of-file)
-          ("|\\|"                           nil nil nil eclector.reader:end-of-file)
+          ("|\\"                            t   nil nil eclector.reader:unterminated-single-escape-in-symbol)
+          ("|\\"                            nil nil nil eclector.reader:unterminated-single-escape-in-symbol)
+          ("|\\|"                           t   nil nil eclector.reader:unterminated-multiple-escape-in-symbol)
+          ("|\\|"                           nil nil nil eclector.reader:unterminated-multiple-escape-in-symbol)
           ("|\\||"                          t   nil nil |\||)
 
           (".\\."                           t   nil nil |..|)
@@ -199,6 +199,7 @@
           ("1/a"        ((2 . 3))         10 :upcase   |1/a|)
           ("1/:"        ()                10 :upcase   eclector.reader:symbol-name-must-not-end-with-package-marker)
           ("1/a"        ()                10 :upcase   1/a)
+          ("1/0"        ()                10 :upcase   eclector.reader:zero-denominator)
           ("1/2a"       ((3 . 4))         10 :upcase   |1/2a|)
           ("1/2:"       ()                10 :upcase   eclector.reader:symbol-name-must-not-end-with-package-marker)
           ("1/2a"       ()                10 :upcase   1/2a)
@@ -280,6 +281,10 @@
           ("1e01"       ()                10 :upcase     10.0f0)
 
           ;; Nondefault *READ-BASE*
+          ("2"          ()                2  :upcase    |2|)
+          ("2/1"        ()                2  :upcase    |2/1|)
+          ("2."         ()                2  :upcase    2)
+
           ("a"          ()                16 :upcase     10)
           ("-a"         ()                16 :upcase    -10)
           ("1a"         ()                16 :upcase     26)
@@ -289,10 +294,19 @@
 
           ("1111.1111"  ()                4  :upcase    1111.1111f0)
           ("1111.1234"  ()                4  :upcase    1111.1234f0)
+          ("1111.4321"  ()                4  :upcase    1111.4321f0)
           ("1111.4444"  ()                4  :upcase    1111.4444f0)
+
           ("1234.1111"  ()                4  :upcase    1234.1111f0)
           ("1234.1234"  ()                4  :upcase    1234.1234f0)
+          ("1234.4321"  ()                4  :upcase    1234.4321f0)
           ("1234.4444"  ()                4  :upcase    1234.4444f0)
+
+          ("4321.1111"  ()                4  :upcase    4321.1111f0)
+          #-ccl ("4321.1234"  ()                4  :upcase    4321.1234f0)
+          ("4321.4321"  ()                4  :upcase    4321.4321f0)
+          ("4321.4444"  ()                4  :upcase    4321.4444f0)
+
           ("4444.1111"  ()                4  :upcase    4444.1111f0)
           ;; TODO CCL's FLOAT is different:
           ;;
@@ -305,4 +319,5 @@
           ;; (i.e. 4444.1235) so there has to be a trick to do it in
           ;; CCL.
           #-ccl ("4444.1234"  ()                4  :upcase    4444.1234f0)
+          ("4444.4321"  ()                4  :upcase    4444.4321f0)
           ("4444.4444"  ()                4  :upcase    4444.4444f0))))

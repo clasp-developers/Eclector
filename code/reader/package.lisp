@@ -10,14 +10,15 @@
    #:peek-char
    #:read
    #:read-preserving-whitespace
-   #:read-from-string)
+   #:read-from-string
+   #:read-delimited-list)
 
   (:shadowing-import-from #:eclector.base
    #:end-of-file
 
    #:read-char
 
-   #:recover) ; Restart name
+   #:recover) ; Function and restart name
 
   (:import-from #:eclector.base
    #:%reader-error
@@ -31,7 +32,10 @@
    #:incomplete-construct
 
    #:missing-delimiter
-   #:delimiter)
+   #:delimiter
+
+   #:read-char-or-error
+   #:read-char-or-recoverable-error)
 
   ;; Contrary to other variables affecting the reader, we cannot use
   ;; the host version of *READTABLE* because we do not necessarily
@@ -58,8 +62,9 @@
    #:read
    #:read-preserving-whitespace
    #:read-from-string
+   #:read-delimited-list
 
-   #:recover) ; Restart name
+   #:recover) ; Function and restart name
 
   ;; Client protocol
   (:export
@@ -101,11 +106,16 @@
 
    #:read-object-type-error
 
+   #:unterminated-single-escape
+   #:unterminated-multiple-escape
+
    #:package-does-not-exist
    #:symbol-does-not-exist
    #:symbol-is-not-external
 
    #:invalid-constituent-character
+   #:unterminated-single-escape-in-symbol
+   #:unterminated-multiple-escape-in-symbol
    #:symbol-name-must-not-be-only-package-markers
    #:symbol-name-must-not-end-with-package-marker
    #:two-package-markers-must-be-adjacent
@@ -123,15 +133,22 @@
    #:numeric-parameter-supplied-but-ignored
    #:numeric-parameter-not-supplied-but-required
 
+   #:end-of-input-after-quote
+   #:object-must-follow-quote
+
    #:unterminated-string
+   #:unterminated-single-escape-in-string
 
    #:backquote-error
    #:backquote-context-error
    #:backquote-in-invalid-context
+   #:object-must-follow-backquote
+   #:end-of-input-after-backquote
    #:unquote-error
    #:invalid-context-for-unquote
    #:unquote-not-inside-backquote
    #:unquote-in-invalid-context
+   #:end-of-input-after-unquote
    #:object-must-follow-unquote
    #:unquote-splicing-in-dotted-list
    #:unquote-splicing-at-top
@@ -139,34 +156,70 @@
    #:unterminated-list
    #:too-many-dots
    #:invalid-context-for-consing-dot
+   #:end-of-input-after-consing-dot
    #:object-must-follow-consing-dot
    #:multiple-objects-following-consing-dot
    #:invalid-context-for-right-parenthesis
 
+   #:end-of-input-after-sharpsign-single-quote
+   #:object-must-follow-sharpsign-single-quote
+
+   #:end-of-input-after-sharpsign-dot
+   #:object-must-follow-sharpsign-dot
    #:read-time-evaluation-inhibited
    #:read-time-evaluation-error
 
+   #:end-of-input-after-backslash
+   #:unterminated-single-escape-in-character-name
+   #:unterminated-multiple-escape-in-character-name
    #:unknown-character-name
+
+   #:end-of-input-before-digit
    #:digit-expected
+   #:zero-denominator
    #:invalid-radix
    #:invalid-default-float-format
 
    #:unterminated-block-comment
 
+   #:end-of-input-after-sharpsign-a
+   #:object-must-follow-sharpsign-a
    #:unterminated-vector
    #:too-many-elements
    #:no-elements-found
    #:incorrect-initialization-length
 
+   #:end-of-input-after-sharpsign-c
+   #:complex-parts-must-follow-sharpsign-c
+   #:non-list-following-sharpsign-c
+   #:end-of-input-before-complex-part
+   #:complex-part-expected
+   #:too-many-complex-parts
+
+   #:end-of-input-after-sharpsign-s
+   #:structure-constructor-must-follow-sharpsign-s
    #:non-list-following-sharpsign-s
+   #:end-of-input-before-structure-type-name
    #:no-structure-type-name-found
    #:structure-type-name-is-not-a-symbol
-   #:slot-name-is-not-a-symbol
+   #:end-of-input-before-slot-name
+   #:slot-name-is-not-a-string-designator
+   #:end-of-input-before-slot-value
    #:no-slot-value-found
 
+   #:end-of-input-after-sharpsign-p
+   #:namestring-must-follow-sharpsign-p
+   #:non-string-following-sharpsign-p
+
+   #:end-of-input-after-sharpsign-plus-minus
+   #:feature-expression-must-follow-sharpsign-plus-minus
    #:feature-expression-type-error
    #:single-feature-expected
+   #:end-of-input-after-feature-expression
+   #:object-must-follow-feature-expression
 
+   #:end-of-input-after-sharpsign-equals
+   #:object-must-follow-sharpsign-equals
    #:sharpsign-equals-label-defined-more-than-once
    #:sharpsign-equals-only-refers-to-self
    #:sharpsign-sharpsign-undefined-label)

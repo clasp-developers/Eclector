@@ -109,7 +109,7 @@
                    (is (equal expected       result))
                    (is (eql   (length input) position))))))))
 
-        '(("(cons 1 2)"                 nil (cons 1 2))
+        `(("(cons 1 2)"                 nil (cons 1 2))
 
           ("#+(or) `1 2"                nil 2)
           ("#+(or) #.(error \"foo\") 2" nil 2)
@@ -136,12 +136,31 @@
           ("#+(or) ; skipme
             1 2"                        nil 2)
 
-          ;; Unknown macro sub character.
+          ;; Invalid macro sub-character.
+          (,(format nil "#~C" #\Tab)    nil eclector.reader:sharpsign-invalid)
+          (,(format nil "#~C" #\Tab)    t   eclector.reader:sharpsign-invalid)
+          ("#<"                         nil eclector.reader:sharpsign-invalid)
+          ("#<"                         t   eclector.reader:sharpsign-invalid)
+          ;; Unknown macro sub-character.
           ("#!"                         nil eclector.reader:unknown-macro-sub-character)
           ("#!"                         t   eclector.reader:unknown-macro-sub-character)
           ;; End of input while trying to read macro sub character.
           ("#"                          nil eclector.reader:unterminated-dispatch-macro)
           ("#"                          t   eclector.reader:unterminated-dispatch-macro))))
+
+(defclass unbound-slot-class ()
+  ((%unbound-slot)))
+
+(test read/circularity-and-standard-objects
+  "Test the combination of circularity and standard instance literals."
+
+  (let* ((input "(#1=#.(make-instance 'unbound-slot-class) #1#)")
+         (result (read-from-string input)))
+    (is-true (typep result '(cons unbound-slot-class
+                                  (cons unbound-slot-class null))))
+    (destructuring-bind (first second) result
+      (is (eq first second))
+      (is-false (slot-boundp first '%unbound-slot)))))
 
 (test read-preserving-whitespace/smoke
   "Smoke test for the READ-PRESERVING-WHITESPACE function."
@@ -203,3 +222,30 @@
           (":foo 1 "  (t nil :preserve-whitespace t)   :foo                         4)
           (":foo 1  " (t nil :preserve-whitespace t)   :foo                         4)
           (":foo 1 2" (t nil :preserve-whitespace t)   :foo                         4))))
+
+(test read-delimited-list/smoke
+  "Smoke test for the READ-DELIMITED-LIST function."
+
+  (mapc (lambda (input-char-expected)
+          (destructuring-bind (input char expected) input-char-expected
+            (flet ((do-it ()
+                     (let ((readtable (eclector.readtable:copy-readtable
+                                       eclector.reader:*readtable*)))
+                       (eclector.readtable:set-macro-character
+                        readtable #\]
+                        (eclector.readtable:get-macro-character readtable #\)))
+                       (let ((eclector.reader:*readtable* readtable))
+                         (with-input-from-string (stream input)
+                           (eclector.reader:read-delimited-list
+                            char stream nil))))))
+              (error-case expected
+                (error (do-it))
+                (t
+                 (is (equal expected (do-it))))))))
+        '((""    #\] eclector.reader:unterminated-list)
+          (")"   #\] eclector.reader:invalid-context-for-right-parenthesis)
+          ("]"   #\] ())
+          ("1"   #\] eclector.reader:unterminated-list)
+          ("."   #\] eclector.reader:invalid-context-for-consing-dot)
+          ("1]"  #\] (1))
+          ("1 ]" #\] (1)))))

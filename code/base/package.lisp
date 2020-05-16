@@ -22,11 +22,14 @@
    #:missing-delimiter
    #:delimiter)
 
-  ;; Restart name
+  ;; Recover restart
   (:export
-   #:recover)
+   #:recover) ; function and restart name
 
   ;; Exported for eclector.reader, not public use.
   (:export
    #:%reader-error
-   #:%recoverable-reader-error))
+   #:%recoverable-reader-error
+
+   #:read-char-or-error
+   #:read-char-or-recoverable-error))
