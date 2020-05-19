@@ -250,7 +250,6 @@
                 (error (do-it))
                 (t
                  (multiple-value-bind (result position) (do-it)
-
                    (is (equalp expected          result))
                    (is (eql    expected-position position))))))))
         '(;; Errors
