@@ -224,7 +224,8 @@
               client input-stream token
               position-package-marker-1
               position-package-marker-2))
-           (return-float (&optional exponentp)
+           (return-float (exponentp)
+             (declare (inline return-float))
              (let ((magnitude (* (+ (funcall decimal-mantissa)
                                     (/ (funcall fraction-numerator)
                                        fraction-denominator))
@@ -234,6 +235,7 @@
                    (type (reader-float-format exponent-marker)))
                (return-from interpret-token
                  (* sign (coerce magnitude type))))))
+      (declare (inline return-float))
       (macrolet ((next-cond ((char-var &optional
                                        return-symbol-if-eoi
                                        (colon-go-symbol t))
@@ -386,7 +388,7 @@
            ;; [sign] decimal-digit* decimal-point decimal-digit+
            (next-cond (char)
              ((not char)
-              (return-float))
+              (return-float nil))
              ((funcall fraction-numerator char)
               (setf fraction-denominator
                     (* fraction-denominator 10))
