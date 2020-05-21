@@ -316,7 +316,7 @@
   (declare (ignore char))
   (unless (null parameter)
     (numeric-parameter-ignored stream 'sharpsign-single-quote parameter))
-  (let ((name (with-forbidden-quasiquotation ('sharpsign-single-quote :keep t)
+  (let ((name (with-forbidden-quasiquotation ('sharpsign-single-quote :keep :keep)
                 (handler-case
                     (read stream t nil t)
                   ((and end-of-file (not incomplete-construct)) (condition)
