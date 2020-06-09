@@ -54,6 +54,9 @@
                (note-skipped-input client input-stream
                                    (or *skip-reason* :reader-macro))
                (go step-1-start))
+              ((or (eq (car values) **end-of-list**)
+                   (typep (car values) 'end-of-list))
+               (return-from read-common (car values)))
               ;; This case takes care of reader macro not returning
               ;; nil when *READ-SUPPRESS* is true.
               (*read-suppress*

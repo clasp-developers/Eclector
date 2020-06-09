@@ -8,25 +8,33 @@
         (*preserve-whitespace* preserve-whitespace-p))
     (if recursive-p
         (read-common client input-stream eof-error-p eof-value)
-        (let* ((*labels* (make-hash-table))
-               (values (multiple-value-list
-                        (read-common client input-stream eof-error-p eof-value)))
-               (result (first values)))
-          ;; *LABELS* maps labels to conses of the form
-          ;;
-          ;;   (TEMPORARY-OBJECT . FINAL-OBJECT)
-          ;;
-          ;; where TEMPORARY-OBJECT is EQ-comparable and its
-          ;; sub-structure does not matter here. For the fixup step,
-          ;; convert these conses into a hash-table mapping temporary
-          ;; objects to final objects.
-          (unless (zerop (hash-table-count *labels*))
-            (let ((seen (make-hash-table :test #'eq))
-                  (mapping (alexandria:alist-hash-table
-                            (alexandria:hash-table-values *labels*)
-                            :test #'eq)))
-              (fixup client result seen mapping)))
-          (values-list values)))))
+        (tagbody
+         :start
+           (let* ((*labels* (make-hash-table))
+                  (values (multiple-value-list
+                           (read-common client input-stream eof-error-p eof-value)))
+                  (result (first values)))
+             (when (or (eq result **end-of-list**)
+                       (typep result 'end-of-list))
+               (%recoverable-reader-error input-stream 'invalid-context-for-right-parenthesis
+                                          :found-character (%character result)
+                                          :report 'ignore-trailing-right-paren)
+               (go :start))
+             ;; *LABELS* maps labels to conses of the form
+             ;;
+             ;;   (TEMPORARY-OBJECT . FINAL-OBJECT)
+             ;;
+             ;; where TEMPORARY-OBJECT is EQ-comparable and its
+             ;; sub-structure does not matter here. For the fixup step,
+             ;; convert these conses into a hash-table mapping temporary
+             ;; objects to final objects.
+             (unless (zerop (hash-table-count *labels*))
+               (let ((seen (make-hash-table :test #'eq))
+                     (mapping (alexandria:alist-hash-table
+                               (alexandria:hash-table-values *labels*)
+                               :test #'eq)))
+                 (fixup client result seen mapping)))
+             (return-from read-aux (values-list values)))))))
 
 (defun read (&optional
              (input-stream *standard-input*)
@@ -65,50 +73,70 @@
 (defun %read-list-elements (stream function eol-value eof-value
                             close-char recursive-p consing-dot-allowed-p)
   (let ((state :proper))
-    (handler-case
-        (loop with *consing-dot-allowed-p* = consing-dot-allowed-p
-              for object = (let ((*consing-dot-allowed-p* nil))
-                             (read stream t nil recursive-p))
-              then (read stream t nil recursive-p)
-              if (eq object *consing-dot*)
-              do (setf *consing-dot-allowed-p* nil
-                       state :tail)
-                 (funcall function :tail (read stream t nil recursive-p))
-                 (setf state :end)
-                 ;; This call to read must not return (it has to signal
-                 ;; END-OF-LIST).
-                 (read stream t nil recursive-p)
-                 (%recoverable-reader-error
-                  stream 'multiple-objects-following-consing-dot
-                  :report 'ignore-object)
-              else
-              do (funcall function state object))
-      (end-of-list (condition)
-        (let ((char (%character condition)))
-          (unless (char= close-char char)
-            (%recoverable-reader-error
-             stream 'invalid-context-for-right-parenthesis
-             :expected-character close-char :found-character char
-             :report 'ignore-trailing-right-paren)))
-        (cond ((and (not (null eol-value))
-                    (funcall function state eol-value)))
-              ((eq state :tail)
-               (%recoverable-reader-error
-                stream 'object-must-follow-consing-dot
-                :report 'inject-nil))))
-      ((and end-of-file (not incomplete-construct)) (condition)
-        (cond ((and (not (null eof-value))
-                    (funcall function state eof-value)))
-              (t
-               (when (eq state :tail)
-                 (%recoverable-reader-error
-                  stream 'end-of-input-after-consing-dot
-                  :stream-position (stream-position condition)
-                  :report 'inject-nil))
-               (%recoverable-reader-error
-                stream 'unterminated-list
-                :stream-position (stream-position condition)
-                :delimiter close-char :report 'use-partial-list)))))))
+    (flet ((special-result (result)
+             (return-from %read-list-elements
+               (cond
+                 ((or (eq result **end-of-list**)
+                      (typep result 'end-of-list))
+                  (let ((char (%character result)))
+                    (unless (char= close-char char)
+                      (%recoverable-reader-error
+                       stream 'invalid-context-for-right-parenthesis
+                       :expected-character close-char :found-character char
+                       :report 'ignore-trailing-right-paren)))
+                  (cond ((and (not (null eol-value))
+                              (funcall function state eol-value)))
+                        ((eq state :tail)
+                         (%recoverable-reader-error
+                          stream 'object-must-follow-consing-dot
+                          :report 'inject-nil))))
+                 ((eq result +end-of-input+)
+                  (cond ((and (not (null eof-value))
+                              (funcall function state eof-value)))
+                        (t
+                         (when (eq state :tail)
+                           (%recoverable-reader-error
+                            stream 'end-of-input-after-consing-dot
+                            ;; :stream-position (stream-position result)
+                            :report 'inject-nil))
+                         (%recoverable-reader-error
+                          stream 'unterminated-list
+                                        ; :stream-position (stream-position result)
+                          :delimiter close-char :report 'use-partial-list))))))))
+      (loop with *consing-dot-allowed-p* = consing-dot-allowed-p
+            for object = (let ((*consing-dot-allowed-p* nil))
+                           (read stream nil +end-of-input+ t))
+            then (read stream nil +end-of-input+ t)
+            do (when (or (eq object +end-of-input+)
+                         (eq object **end-of-list**)
+                         (typep object 'end-of-list))
+                 (special-result object))
+            if (eq object *consing-dot*)
+            do (setf *consing-dot-allowed-p* nil
+                     state :tail)
+               (let ((result (read stream nil +end-of-input+ t)))
+                 (cond
+                   ((eq result +end-of-input+)
+                    (special-result result))
+                   ((or (eq result **end-of-list**)
+                        (typep result 'end-of-list))
+                    (special-result result))
+                   (t
+                    (funcall function :tail result))))
+               (setf state :end)
+               ;; This call to read must not return (it has to signal
+               ;; END-OF-LIST).
+               (let ((result (read stream t +end-of-input+ t)))
+                 (cond ((or (eq result +end-of-input+)
+                            (eq result **end-of-list**)
+                            (typep result 'end-of-list))
+                        (special-result result))
+                       (t
+                        (%recoverable-reader-error
+                         stream 'multiple-objects-following-consing-dot
+                         :report 'ignore-object))))
+            else
+            do (funcall function state object)))))
 
 (defun %read-delimited-list (stream close-char recursive-p)
   (alexandria:when-let ((list-reader *list-reader*))
