@@ -3,7 +3,14 @@
    #:common-lisp
    #:fiveam)
 
+  (:import-from #:eclector.reader
+   #:convert-according-to-readtable-case
+   #:skip-whitespace
+   #:skip-whitespace*)
+
   (:import-from #:eclector.test
+   #:do-input-cases        #:expect
+   #:do-stream-input-cases #:with-stream
    #:signals-printable
    #:error-case)
 

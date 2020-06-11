@@ -1,12 +1,12 @@
 (cl:in-package #:eclector.reader)
 
-(defvar *input-stream*)
-
-(defparameter *preserve-whitespace* nil)
-
 (defparameter *client* nil)
 
 (defvar *skip-reason*)
+
+;;; Labels
+
+(defvar *labels*)
 
 ;;; Quasiquote syntax
 

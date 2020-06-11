@@ -80,7 +80,8 @@
                 (:version "fiveam" "1.4"))
 
   :components  ((:module "test"
-                 :components ((:file "package")))
+                 :components ((:file "package")
+                              (:file "utilities")))
 
                 (:module "readtable"
                  :pathname "test/readtable"
@@ -104,6 +105,7 @@
                               (:file "helpers")
                               (:file "gen-quasiquote")
 
+                              (:file "utilities")
                               (:file "tokens")
                               (:file "read")
                               (:file "macro-functions")

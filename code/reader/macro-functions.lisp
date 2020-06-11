@@ -54,8 +54,8 @@
         count 1 into semicolons
         else
         do (setf state nil)
-        finally (when (eql char #\Newline)
-                  (setf *skip-reason* (cons :line-comment (1+ semicolons)))
+        finally (setf *skip-reason* (cons :line-comment (1+ semicolons)))
+                (when (eql char #\Newline)
                   (unread-char char stream)))
   (values))
 
@@ -537,8 +537,7 @@
               (unread-char char stream)
               (return-char))
              (:whitespace
-              (when *preserve-whitespace*
-                (unread-char char stream))
+              (unread-char char stream)
               (return-char))))
        odd-escapes
          (multiple-value-bind (char syntax-type) (next-char :multiple-escape)
@@ -611,8 +610,7 @@
                         ((nil)
                          (return-from integer value))
                         (:whitespace
-                         (when *preserve-whitespace*
-                           (unread-char char stream))
+                         (unread-char char stream)
                          (return-from integer value))
                         (:terminating-macro
                          (unread-char char stream)
@@ -924,8 +922,7 @@
          (multiple-value-bind (char syntax-type) (read-char-handling-eof nil)
            (ecase syntax-type
              (:whitespace
-              (when *preserve-whitespace*
-                (unread-char char stream))
+              (unread-char char stream)
               (return-symbol))
              (:terminating-macro
               (unread-char char stream)
@@ -1190,7 +1187,7 @@
                     (t
                      result))))))
     (cond ((stringp expression)
-           (parse-namestring expression))
+           (values (parse-namestring expression)))
           (t
            (%recoverable-reader-error
             stream 'non-string-following-sharpsign-p
@@ -1201,6 +1198,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Reader macros for sharpsign + and sharpsign -.
+
+;;; This variable is bound to the current input stream in
+;;; SHARPSIGN-PLUS-MINUS to make the stream available for error
+;;; reporting in CHECK-STANDARD-FEATURE-EXPRESSION.
+(defvar *input-stream*)
 
 (deftype feature-expression-operator ()
   '(member :not :or :and))
@@ -1285,7 +1287,8 @@
                  (recover (recovery-description
                            'treat-as-false (acclimation:language
                                             acclimation:*locale*)))
-               (evaluate-feature-expression client feature-expression))
+               (let ((*input-stream* stream))
+                 (evaluate-feature-expression client feature-expression)))
              invertp)
             (read-expression 'end-of-input-after-feature-expression
                              'object-must-follow-feature-expression
@@ -1386,7 +1389,6 @@
         (return-from sharpsign-equals (read-object)))
       (let ((marker (make-fixup-marker)))
         (setf (gethash parameter labels) marker)
-        ;; FIXME Do we need to transmit EOF-ERROR-P through reader macros?
         (let ((result (read-object)))
           (when (eq result (fixup-marker-temporary marker))
             (%recoverable-reader-error

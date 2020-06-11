@@ -1,62 +1,65 @@
 (cl:in-package #:eclector.reader)
 
-(defvar *labels*)
+;;; Entry points
 
 (defun read-aux
     (input-stream eof-error-p eof-value recursive-p preserve-whitespace-p)
-  (let ((client *client*)
-        (*preserve-whitespace* preserve-whitespace-p))
+  (let ((client *client*))
     (if recursive-p
         (read-common client input-stream eof-error-p eof-value)
-        (tagbody
-         :start
-           (let* ((*labels* (make-hash-table))
-                  (values (multiple-value-list
-                           (read-common client input-stream eof-error-p eof-value)))
-                  (result (first values)))
-             (when (or (eq result **end-of-list**)
-                       (typep result 'end-of-list))
-               (%recoverable-reader-error input-stream 'invalid-context-for-right-parenthesis
-                                          :found-character (%character result)
-                                          :report 'ignore-trailing-right-paren)
-               (go :start))
-             ;; *LABELS* maps labels to conses of the form
-             ;;
-             ;;   (TEMPORARY-OBJECT . FINAL-OBJECT)
-             ;;
-             ;; where TEMPORARY-OBJECT is EQ-comparable and its
-             ;; sub-structure does not matter here. For the fixup step,
-             ;; convert these conses into a hash-table mapping temporary
-             ;; objects to final objects.
-             (unless (zerop (hash-table-count *labels*))
-               (let ((seen (make-hash-table :test #'eq))
-                     (mapping (alexandria:alist-hash-table
-                               (alexandria:hash-table-values *labels*)
-                               :test #'eq)))
-                 (fixup client result seen mapping)))
-             (return-from read-aux (values-list values)))))))
+        (let* ((*labels* (make-hash-table))
+               (values (multiple-value-list
+                        (read-common client input-stream eof-error-p eof-value)))
+               (result (first values)))
+          ;; *LABELS* maps labels to conses of the form
+          ;;
+          ;;   (TEMPORARY-OBJECT . FINAL-OBJECT)
+          ;;
+          ;; where TEMPORARY-OBJECT is EQ-comparable and its
+          ;; sub-structure does not matter here. For the fixup step,
+          ;; convert these conses into a hash-table mapping temporary
+          ;; objects to final objects.
+          (unless (zerop (hash-table-count *labels*))
+            (let ((seen (make-hash-table :test #'eq))
+                  (mapping (alexandria:alist-hash-table
+                            (alexandria:hash-table-values *labels*)
+                            :test #'eq)))
+              (fixup client result seen mapping)))
+          ;; All reading in READ-COMMON and its callees was done in a
+          ;; whitespace-preserving way. So we skip zero to one
+          ;; whitespace characters here if requested via
+          ;; PRESERVE-WHITESPACE-P.
+          (unless preserve-whitespace-p
+            (skip-whitespace input-stream))
+          (values-list values)))))
 
-(defun read (&optional
-             (input-stream *standard-input*)
-             (eof-error-p t)
-             (eof-value nil)
-             (recursive-p nil))
-  (read-aux input-stream eof-error-p eof-value recursive-p recursive-p))
+(macrolet
+    ((define (name preserve-whitespace-form)
+       `(progn
+          (defun ,name (&optional
+                        (input-stream *standard-input*)
+                        (eof-error-p t)
+                        (eof-value nil)
+                        (recursive-p nil))
+            (read-aux input-stream eof-error-p eof-value recursive-p ,preserve-whitespace-form))
 
-(defun read-preserving-whitespace (&optional
-                                   (input-stream *standard-input*)
-                                   (eof-error-p t)
-                                   (eof-value nil)
-                                   (recursive-p nil))
-  (read-aux input-stream eof-error-p eof-value recursive-p t))
+          (define-compiler-macro ,name (&whole form
+                                        &optional (input-stream '*standard-input*)
+                                                  (eof-error-p 't)
+                                                  (eof-value 'nil)
+                                                  (recursive-p nil))
+            (if (and (constantp recursive-p)
+                     (eval recursive-p))
+                `(read-common *client* ,input-stream ,eof-error-p ,eof-value)
+                form)))))
+  (define read                       recursive-p)
+  (define read-preserving-whitespace t))
 
-(defun read-from-string (string &optional
-                                (eof-error-p t)
-                                (eof-value nil)
-                                &key
-                                (start 0)
-                                (end nil)
-                                (preserve-whitespace nil))
+(defun read-from-string (string &optional (eof-error-p t)
+                                          (eof-value nil)
+                                &key (start 0)
+                                     (end nil)
+                                     (preserve-whitespace nil))
   (let ((index))
     (values (with-input-from-string (stream string :start start :end end
                                                    :index index)

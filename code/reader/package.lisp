@@ -55,7 +55,6 @@
 
    #:*client*
    #:*skip-reason*
-   #:*preserve-whitespace*
 
    #:read-char
    #:peek-char
@@ -69,6 +68,7 @@
   ;; Client protocol
   (:export
    #:read-common
+
    #:read-token
    #:note-skipped-input
    #:interpret-token
